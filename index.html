@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memorama de Lingüística</title>
+<style>
+  *{box-sizing:border-box}
+  body{
+    margin:0;font-family:Arial,Helvetica,sans-serif;
+    background:linear-gradient(135deg,#eef2ff,#fdf2f8);
+    color:#1f2937;min-height:100vh;
+  }
+  .wrap{max-width:1000px;margin:auto;padding:28px 18px 45px}
+  header{
+    background:white;border-radius:24px;padding:25px;text-align:center;
+    box-shadow:0 10px 30px rgba(0,0,0,.08);margin-bottom:20px
+  }
+  h1{margin:0 0 8px;font-size:clamp(28px,5vw,42px)}
+  .subtitle{margin:0;color:#64748b}
+  .info{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:18px}
+  .badge{background:#f1f5f9;padding:10px 16px;border-radius:999px;font-weight:bold}
+  .game{
+    display:grid;grid-template-columns:repeat(6,1fr);gap:12px;
+    margin-top:20px
+  }
+  .card{height:130px;perspective:900px;cursor:pointer}
+  .inner{
+    width:100%;height:100%;position:relative;transition:transform .55s;
+    transform-style:preserve-3d
+  }
+  .card.flipped .inner,.card.matched .inner{transform:rotateY(180deg)}
+  .face{
+    position:absolute;inset:0;backface-visibility:hidden;border-radius:17px;
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    padding:12px;font-weight:bold;box-shadow:0 6px 15px rgba(0,0,0,.1)
+  }
+  .front{
+    background:linear-gradient(145deg,#4f46e5,#7c3aed);color:white;font-size:30px
+  }
+  .back{background:white;transform:rotateY(180deg);font-size:15px;line-height:1.25}
+  .matched .back{outline:4px solid #22c55e}
+  .controls{text-align:center;margin:22px 0}
+  button{
+    border:0;border-radius:12px;padding:12px 20px;font-weight:bold;
+    background:#111827;color:white;cursor:pointer;font-size:15px
+  }
+  button:hover{opacity:.9}
+  #message{text-align:center;font-weight:bold;min-height:24px;margin:10px}
+  .success{
+    background:white;border-radius:18px;padding:18px;text-align:center;
+    box-shadow:0 8px 20px rgba(0,0,0,.07);display:none
+  }
+  @media(max-width:800px){.game{grid-template-columns:repeat(4,1fr)}.card{height:125px}}
+  @media(max-width:500px){.game{grid-template-columns:repeat(3,1fr);gap:8px}.card{height:115px}.back{font-size:13px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🧠 Memorama de Lingüística</h1>
+    <p class="subtitle">Relaciona cada concepto lingüístico con su definición.</p>
+    <div class="info">
+      <div class="badge">Parejas: <span id="pairs">0/8</span></div>
+      <div class="badge">Intentos: <span id="moves">0</span></div>
+      <div class="badge">Tiempo: <span id="time">00:00</span></div>
+    </div>
+  </header>
+
+  <div id="message">Encuentra las 8 parejas para completar el reto.</div>
+  <div class="game" id="game"></div>
+
+  <div class="controls">
+    <button onclick="restart()">🔄 Reiniciar juego</button>
+  </div>
+
+  <div class="success" id="success">
+    <h2>🎉 ¡Excelente trabajo!</h2>
+    <p>Completaste el memorama en <strong><span id="finalTime"></span></strong>,
+    con <strong><span id="finalMoves"></span></strong> intentos.</p>
+    <p>Este recurso favorece la asociación de conceptos, la memoria y la comprensión de vocabulario lingüístico.</p>
+  </div>
+</div>
+
+<script>
+const concepts = [
+  ["Fonética","Estudia los sonidos del habla y cómo se producen, transmiten y perciben."],
+  ["Fonología","Analiza cómo se organizan y funcionan los sonidos dentro de una lengua."],
+  ["Morfología","Estudia la estructura interna de las palabras y sus unidades."],
+  ["Sintaxis","Estudia cómo se combinan las palabras para formar oraciones."],
+  ["Semántica","Estudia el significado de palabras, expresiones y oraciones."],
+  ["Pragmática","Analiza cómo el contexto influye en la interpretación de los mensajes."],
+  ["Sociolingüística","Estudia la relación entre lengua, sociedad y grupos de hablantes."],
+  ["Lingüística aplicada","Utiliza conocimientos lingüísticos para resolver problemas prácticos, especialmente educativos."]
+];
+
+let cards=[], first=null, second=null, lock=false, moves=0, matches=0;
+let seconds=0, timer=null;
+
+function shuffle(arr){ return arr.sort(()=>Math.random()-0.5); }
+
+function startTimer(){
+  if(timer) return;
+  timer=setInterval(()=>{
+    seconds++;
+    document.getElementById("time").textContent =
+      String(Math.floor(seconds/60)).padStart(2,"0")+":"+String(seconds%60).padStart(2,"0");
+  },1000);
+}
+
+function render(){
+  const game=document.getElementById("game");
+  game.innerHTML="";
+  cards=shuffle([...concepts.map((x,i)=>({id:i,type:"term",text:x[0]})),
+                 ...concepts.map((x,i)=>({id:i,type:"def",text:x[1]}))]);
+  cards.forEach((c,index)=>{
+    const el=document.createElement("div");
+    el.className="card";
+    el.dataset.id=c.id;
+    el.innerHTML=`<div class="inner">
+      <div class="face front">?</div>
+      <div class="face back">${c.text}</div>
+    </div>`;
+    el.addEventListener("click",()=>flip(el,c,index));
+    game.appendChild(el);
+  });
+}
+
+function flip(el,c,index){
+  if(lock || el.classList.contains("flipped") || el.classList.contains("matched")) return;
+  startTimer();
+  el.classList.add("flipped");
+  if(!first){first={el,c};return;}
+  second={el,c};
+  moves++;
+  document.getElementById("moves").textContent=moves;
+  lock=true;
+  if(first.c.id===second.c.id && first.c.type!==second.c.type){
+    setTimeout(()=>{
+      first.el.classList.add("matched");
+      second.el.classList.add("matched");
+      matches++;
+      document.getElementById("pairs").textContent=`${matches}/8`;
+      first=second=null;lock=false;
+      if(matches===8) finish();
+    },450);
+  }else{
+    setTimeout(()=>{
+      first.el.classList.remove("flipped");
+      second.el.classList.remove("flipped");
+      first=second=null;lock=false;
+    },900);
+  }
+}
+
+function finish(){
+  clearInterval(timer);
+  document.getElementById("finalTime").textContent=document.getElementById("time").textContent;
+  document.getElementById("finalMoves").textContent=moves;
+  document.getElementById("success").style.display="block";
+  document.getElementById("message").textContent="¡Memorama completado!";
+  window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"});
+}
+
+function restart(){
+  clearInterval(timer);timer=null;seconds=0;moves=0;matches=0;first=second=null;lock=false;
+  document.getElementById("time").textContent="00:00";
+  document.getElementById("moves").textContent="0";
+  document.getElementById("pairs").textContent="0/8";
+  document.getElementById("message").textContent="Encuentra las 8 parejas para completar el reto.";
+  document.getElementById("success").style.display="none";
+  render();
+}
+render();
+</script>
+</body>
+</html>
